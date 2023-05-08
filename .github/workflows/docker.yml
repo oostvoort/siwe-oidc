@@ -15,9 +15,8 @@ jobs:
       uses: elgohr/Publish-Docker-Github-Action@v4
       with:
         name: oostvoort/siwe_oidc
-        username: ${{ github.actor }}
-        password: ${{ secrets.GH_PACKAGE_PUSH_TOKEN }}
-        registry: ghcr.io
+        username: $DOCKER_USERNAME
+        password: ${{ secrets.DOCKER_PASSWORD }}
         tag_names: true
         tag_semver: true
         snapshot: true
