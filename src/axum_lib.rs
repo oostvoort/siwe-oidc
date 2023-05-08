@@ -58,7 +58,7 @@ impl IntoResponse for CustomError {
                 uri.as_str(),
                 // .map_err(|e| anyhow!("Could not parse URI: {}", e))?,
             )
-                .into_response(),
+            .into_response(),
             CustomError::Other(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response()
             }
@@ -115,13 +115,7 @@ async fn authorize(
         header::SET_COOKIE,
         session_cookie.to_string().parse().unwrap(),
     );
-    Ok((
-        headers,
-        Redirect::to(
-            url.as_str()
-            ,
-        ),
-    ))
+    Ok((headers, Redirect::to(url.as_str())))
 }
 
 async fn sign_in(
@@ -131,10 +125,7 @@ async fn sign_in(
     Extension(config): Extension<config::Config>,
 ) -> Result<Redirect, CustomError> {
     let url = oidc::sign_in(&config.base_url, params, cookies, &redis_client).await?;
-    Ok(Redirect::to(
-        url.as_str()
-
-    ))
+    Ok(Redirect::to(url.as_str()))
 }
 
 async fn register(
