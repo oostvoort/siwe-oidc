@@ -523,7 +523,7 @@ impl Web3ModalMessage {
             domain: self.domain.clone().try_into()?,
             address: self.address.0,
             statement: Some(self.statement.to_string()),
-            uri: UriString::from_str(&self.uri)?,
+            uri: UriString::from_str(&self.uri).unwrap(),
             version: Version::from_str(&self.version)?,
             chain_id: self.chain_id,
             nonce: self.nonce.to_string(),

@@ -55,10 +55,10 @@ impl IntoResponse for CustomError {
             }
             CustomError::NotFound => (StatusCode::NOT_FOUND, self.to_string()).into_response(),
             CustomError::Redirect(uri) => Redirect::to(
-                uri.parse().unwrap(),
+                uri.as_str(),
                 // .map_err(|e| anyhow!("Could not parse URI: {}", e))?,
             )
-            .into_response(),
+                .into_response(),
             CustomError::Other(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response()
             }
@@ -80,12 +80,12 @@ async fn provider_metadata(
 }
 
 async fn token(
-    Form(form): Form<oidc::TokenForm>,
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
     basic: Option<TypedHeader<Authorization<Basic>>>,
     Extension(private_key): Extension<RsaPrivateKey>,
     Extension(config): Extension<config::Config>,
     Extension(redis_client): Extension<RedisClient>,
+    Form(form): Form<oidc::TokenForm>,
 ) -> Result<Json<CoreTokenResponse>, CustomError> {
     let secret = if let Some(b) = bearer {
         Some(b.0 .0.token().to_string())
@@ -119,8 +119,7 @@ async fn authorize(
         headers,
         Redirect::to(
             url.as_str()
-                .parse()
-                .map_err(|e| anyhow!("Could not parse URI: {}", e))?,
+            ,
         ),
     ))
 }
@@ -134,15 +133,14 @@ async fn sign_in(
     let url = oidc::sign_in(&config.base_url, params, cookies, &redis_client).await?;
     Ok(Redirect::to(
         url.as_str()
-            .parse()
-            .map_err(|e| anyhow!("Could not parse URI: {}", e))?,
+
     ))
 }
 
 async fn register(
-    extract::Json(payload): extract::Json<CoreClientMetadata>,
     Extension(config): Extension<config::Config>,
     Extension(redis_client): Extension<RedisClient>,
+    extract::Json(payload): extract::Json<CoreClientMetadata>,
 ) -> Result<(StatusCode, Json<CoreClientRegistrationResponse>), CustomError> {
     let registration = oidc::register(payload, config.base_url, &redis_client).await?;
     Ok((StatusCode::CREATED, registration.into()))
@@ -185,9 +183,9 @@ impl IntoResponse for UserInfoResponse {
 async fn userinfo(
     Extension(private_key): Extension<RsaPrivateKey>,
     Extension(config): Extension<config::Config>,
-    payload: Option<Form<oidc::UserInfoPayload>>,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>, // TODO maybe go through FromRequest https://github.com/tokio-rs/axum/blob/main/examples/jwt/src/main.rs
     Extension(redis_client): Extension<RedisClient>,
+    bearer: Option<TypedHeader<Authorization<Bearer>>>, // TODO maybe go through FromRequest https://github.com/tokio-rs/axum/blob/main/examples/jwt/src/main.rs
+    payload: Option<Form<oidc::UserInfoPayload>>,
 ) -> Result<UserInfoResponse, CustomError> {
     let payload = if let Some(Form(p)) = payload {
         p
@@ -218,17 +216,17 @@ async fn clientinfo(
 
 async fn client_update(
     Path(client_id): Path<String>,
-    extract::Json(payload): extract::Json<CoreClientMetadata>,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
     Extension(redis_client): Extension<RedisClient>,
+    bearer: Option<TypedHeader<Authorization<Bearer>>>,
+    extract::Json(payload): extract::Json<CoreClientMetadata>,
 ) -> Result<(), CustomError> {
     oidc::client_update(client_id, payload, bearer.map(|b| b.0 .0), &redis_client).await
 }
 
 async fn client_delete(
+    Extension(redis_client): Extension<RedisClient>,
     Path(client_id): Path<String>,
     bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    Extension(redis_client): Extension<RedisClient>,
 ) -> Result<(StatusCode, ()), CustomError> {
     Ok((
         StatusCode::NO_CONTENT,
@@ -277,7 +275,7 @@ pub async fn main() {
     };
 
     let app = Router::new()
-        .nest(
+        .nest_service(
             "/build",
             get_service(ServeDir::new("./static/build")).handle_error(
                 |error: std::io::Error| async move {
@@ -288,7 +286,7 @@ pub async fn main() {
                 },
             ),
         )
-        .nest(
+        .nest_service(
             "/legal",
             get_service(ServeDir::new("./static/legal")).handle_error(
                 |error: std::io::Error| async move {
@@ -299,7 +297,7 @@ pub async fn main() {
                 },
             ),
         )
-        .nest(
+        .nest_service(
             "/img",
             get_service(ServeDir::new("./static/img")).handle_error(
                 |error: std::io::Error| async move {
