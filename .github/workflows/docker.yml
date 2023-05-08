@@ -15,7 +15,7 @@ jobs:
       uses: elgohr/Publish-Docker-Github-Action@v4
       with:
         name: oostvoort/siwe_oidc
-        username: $DOCKER_USERNAME
+        username: ${{ vars.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         tag_names: true
         tag_semver: true
