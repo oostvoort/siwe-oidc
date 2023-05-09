@@ -3,6 +3,8 @@ mod axum_lib;
 #[cfg(not(target_arch = "wasm32"))]
 mod config;
 #[cfg(not(target_arch = "wasm32"))]
+mod extractor_bearer;
+#[cfg(not(target_arch = "wasm32"))]
 mod oidc;
 #[cfg(not(target_arch = "wasm32"))]
 use axum_lib::main as axum_main;

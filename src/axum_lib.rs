@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use axum::{
+    debug_handler,
     extract::{self, Extension, Form, Path, Query, TypedHeader},
     http::{
         header::{self, HeaderMap},
@@ -13,11 +14,8 @@ use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment,
 };
-use headers::{
-    self,
-    authorization::{Basic, Bearer},
-    Authorization, ContentType, Header,
-};
+
+use headers::{self, Authorization, ContentType, Header};
 use openidconnect::core::{
     CoreClientMetadata, CoreClientRegistrationResponse, CoreJsonWebKeySet, CoreProviderMetadata,
     CoreTokenResponse, CoreUserInfoClaims, CoreUserInfoJsonWebToken,
@@ -36,6 +34,7 @@ use tracing::info;
 
 use super::config;
 use super::oidc::{self, CustomError};
+use crate::extractor_bearer::ExtractBearer;
 use ::siwe_oidc::db::*;
 
 impl IntoResponse for CustomError {
@@ -80,21 +79,15 @@ async fn provider_metadata(
 }
 
 async fn token(
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
-    basic: Option<TypedHeader<Authorization<Basic>>>,
     Extension(private_key): Extension<RsaPrivateKey>,
     Extension(config): Extension<config::Config>,
     Extension(redis_client): Extension<RedisClient>,
+    ExtractBearer(bearer): ExtractBearer,
     Form(form): Form<oidc::TokenForm>,
 ) -> Result<Json<CoreTokenResponse>, CustomError> {
-    let secret = if let Some(b) = bearer {
-        Some(b.0 .0.token().to_string())
-    } else {
-        basic.map(|b| b.0 .0.password().to_string())
-    };
     let token_response = oidc::token(
         form,
-        secret,
+        bearer,
         private_key,
         config.base_url,
         config.require_secret,
@@ -118,11 +111,12 @@ async fn authorize(
     Ok((headers, Redirect::to(url.as_str())))
 }
 
+#[debug_handler]
 async fn sign_in(
-    Query(params): Query<oidc::SignInParams>,
-    TypedHeader(cookies): TypedHeader<headers::Cookie>,
     Extension(redis_client): Extension<RedisClient>,
     Extension(config): Extension<config::Config>,
+    Query(params): Query<oidc::SignInParams>,
+    TypedHeader(cookies): TypedHeader<headers::Cookie>,
 ) -> Result<Redirect, CustomError> {
     let url = oidc::sign_in(&config.base_url, params, cookies, &redis_client).await?;
     Ok(Redirect::to(url.as_str()))
@@ -175,7 +169,7 @@ async fn userinfo(
     Extension(private_key): Extension<RsaPrivateKey>,
     Extension(config): Extension<config::Config>,
     Extension(redis_client): Extension<RedisClient>,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>, // TODO maybe go through FromRequest https://github.com/tokio-rs/axum/blob/main/examples/jwt/src/main.rs
+    ExtractBearer(bearer): ExtractBearer,
     payload: Option<Form<oidc::UserInfoPayload>>,
 ) -> Result<UserInfoResponse, CustomError> {
     let payload = if let Some(Form(p)) = payload {
@@ -187,7 +181,7 @@ async fn userinfo(
         config.base_url,
         config.eth_provider,
         private_key,
-        bearer.map(|b| b.0 .0),
+        Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
         payload,
         &redis_client,
     )
@@ -208,20 +202,31 @@ async fn clientinfo(
 async fn client_update(
     Path(client_id): Path<String>,
     Extension(redis_client): Extension<RedisClient>,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
+    ExtractBearer(bearer): ExtractBearer,
     extract::Json(payload): extract::Json<CoreClientMetadata>,
 ) -> Result<(), CustomError> {
-    oidc::client_update(client_id, payload, bearer.map(|b| b.0 .0), &redis_client).await
+    oidc::client_update(
+        client_id,
+        payload,
+        Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
+        &redis_client,
+    )
+    .await
 }
 
 async fn client_delete(
     Extension(redis_client): Extension<RedisClient>,
     Path(client_id): Path<String>,
-    bearer: Option<TypedHeader<Authorization<Bearer>>>,
+    ExtractBearer(bearer): ExtractBearer,
 ) -> Result<(StatusCode, ()), CustomError> {
     Ok((
         StatusCode::NO_CONTENT,
-        oidc::client_delete(client_id, bearer.map(|b| b.0 .0), &redis_client).await?,
+        oidc::client_delete(
+            client_id,
+            Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
+            &redis_client,
+        )
+        .await?,
     ))
 }
 

@@ -3,3 +3,4 @@
 **/wrangler.toml
 **/node_module
 **/dist
+.idea
