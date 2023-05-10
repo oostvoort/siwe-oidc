@@ -3,8 +3,10 @@ use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, request::Parts, StatusCode},
 };
+use headers::authorization::Bearer;
+use headers::Authorization;
 
-pub struct ExtractBearer(pub Option<String>);
+pub struct ExtractBearer(pub Option<Authorization<Bearer>>);
 
 #[async_trait]
 impl<S> FromRequestParts<S> for ExtractBearer
@@ -23,12 +25,12 @@ where
                 && slice.len() > SCHEME.len()
                 && slice[SCHEME.len()] == b' '
             {
-                return Ok(ExtractBearer(Some(String::from(val.to_str().unwrap()))));
+                let token = &val.to_str().unwrap()[{ SCHEME.len() + 1 }..];
+                let result = Authorization::bearer(token).unwrap();
+
+                return Ok(ExtractBearer(Some(result)));
             }
         }
-        Err((
-            StatusCode::BAD_REQUEST,
-            "`Authorization` header or `Bearer` scheme is missing",
-        ))
+        Ok(ExtractBearer(None))
     }
 }

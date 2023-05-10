@@ -15,6 +15,7 @@ use figment::{
     Figment,
 };
 
+use headers::authorization::Basic;
 use headers::{self, Authorization, ContentType, Header};
 use openidconnect::core::{
     CoreClientMetadata, CoreClientRegistrationResponse, CoreJsonWebKeySet, CoreProviderMetadata,
@@ -83,11 +84,18 @@ async fn token(
     Extension(config): Extension<config::Config>,
     Extension(redis_client): Extension<RedisClient>,
     ExtractBearer(bearer): ExtractBearer,
+    basic: Option<TypedHeader<Authorization<Basic>>>,
     Form(form): Form<oidc::TokenForm>,
 ) -> Result<Json<CoreTokenResponse>, CustomError> {
+    let secret = if let Some(b) = bearer {
+        Some(String::from(b.0.token()))
+    } else {
+        basic.map(|b| b.0 .0.password().to_string())
+    };
+
     let token_response = oidc::token(
         form,
-        bearer,
+        secret,
         private_key,
         config.base_url,
         config.require_secret,
@@ -181,7 +189,7 @@ async fn userinfo(
         config.base_url,
         config.eth_provider,
         private_key,
-        Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
+        Some(bearer.unwrap().0),
         payload,
         &redis_client,
     )
@@ -205,13 +213,7 @@ async fn client_update(
     ExtractBearer(bearer): ExtractBearer,
     extract::Json(payload): extract::Json<CoreClientMetadata>,
 ) -> Result<(), CustomError> {
-    oidc::client_update(
-        client_id,
-        payload,
-        Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
-        &redis_client,
-    )
-    .await
+    oidc::client_update(client_id, payload, Some(bearer.unwrap().0), &redis_client).await
 }
 
 async fn client_delete(
@@ -221,12 +223,7 @@ async fn client_delete(
 ) -> Result<(StatusCode, ()), CustomError> {
     Ok((
         StatusCode::NO_CONTENT,
-        oidc::client_delete(
-            client_id,
-            Some(Authorization::bearer(bearer.unwrap().as_str()).unwrap().0),
-            &redis_client,
-        )
-        .await?,
+        oidc::client_delete(client_id, Some(bearer.unwrap().0), &redis_client).await?,
     ))
 }
 
